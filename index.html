@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>jin jin Game</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+      touch-action: none;
+    }
+    #startScreen, #gameOverScreen {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      font-family: sans-serif;
+      font-size: 24px;
+      color: white;
+    }
+    #startScreen {
+      background: url('bg.png') no-repeat center center/cover;
+    }
+    #startScreen img.car {
+      width: 100px;
+      margin-bottom: 20px;
+    }
+    #gameOverScreen {
+      background: rgba(0,0,0,0.8);
+      display: none;
+    }
+    #timerDisplay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-family: sans-serif;
+      font-size: 20px;
+    }
+    button {
+      font-size: 20px;
+      padding: 10px 20px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    #gameCanvas {
+      display: block;
+      background: black;
+      margin: 0 auto;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+
+
+  <div id="startScreen">
+    <img src="UFO.png" class="car" alt="Car Image" />
+    <div>jin jin Game</div>
+    <button id="startButton">Start Game</button>
+  </div>
+
+
+  <div id="gameOverScreen">
+    <div id="finalScore"></div>
+    <button id="restartButton">Play Again</button>
+  </div>
+
+
+  <div id="timerDisplay">Time: 0 sec</div>
+
+
+  <canvas id="gameCanvas"></canvas>
+
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+
+let laneWidth = canvas.width / 3;
+const carWidth = 40;
+const carHeight = 80;
+let obstacleWidth = laneWidth * 0.5;
+const obstacleHeight = 50;
+
+
+let carLane = 1;
+let speed = 2; // ความเร็วเริ่มต้นลดลง
+let score = 0;
+let obstacles = [];
+let gameActive = false;
+let bgY = 0;
+
+
+const carImg = new Image(); carImg.src = 'UFO.png'; // ตัวละคร
+const bgImg = new Image(); bgImg.src = '55.png'; // ทางวิ่ง หรือ พื้นหลัง
+const obstacleImgs = [new Image(), new Image(), new Image(), new Image()];
+obstacleImgs[0].src = '55.png'; // สิ่งกีดขวาง
+obstacleImgs[1].src = 'iss.png'; // สิ่งกีดขวาง
+obstacleImgs[2].src = 'iss2.png'; // สิ่งกีดขวาง
+obstacleImgs[3].src = 'uo.png'; // สิ่งกีดขวาง
+
+
+const gameSound = new Audio('pp.mp3'); gameSound.loop = true; // เสียงในเกมส์
+const gameOverSound = new Audio('noo.mp3'); // เสียงจบเกมส์
+
+
+function drawBackground() {
+  bgY += speed;
+  if (bgY >= canvas.height) bgY = 0;
+
+
+  ctx.drawImage(bgImg, 0, bgY - canvas.height, canvas.width, canvas.height);
+  ctx.drawImage(bgImg, 0, bgY, canvas.width, canvas.height);
+}
+
+
+function drawLaneLines() {
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 2;
+  const dashHeight = 20;
+
+
+  for (let i = 1; i <= 2; i++) {
+    const x = i * laneWidth;
+    for (let y = 0; y < canvas.height; y += dashHeight * 2) {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y + dashHeight);
+      ctx.stroke();
+    }
+  }
+}
+
+
+function drawCar() {
+  const x = carLane * laneWidth + (laneWidth - carWidth) / 2;
+  const y = canvas.height - carHeight - 150;
+  ctx.drawImage(carImg, x, y, carWidth, carHeight);
+}
+
+
+function drawObstacles() {
+  obstacles.forEach(ob => {
+    const x = ob.lane * laneWidth + (laneWidth - obstacleWidth) / 2;
+    ctx.drawImage(ob.img, x, ob.y, obstacleWidth, obstacleHeight);
+  });
+}
+
+
+function updateObstacles() {
+  const maxGap = 400;
+  const minGapValue = 250;
+  const gapDecreaseSpeed = 0.015;
+  const minGap = Math.max(minGapValue, maxGap - score * gapDecreaseSpeed);
+
+
+  obstacles.forEach(ob => ob.y += speed);
+
+
+  if (obstacles.length === 0 || obstacles[obstacles.length - 1].y > 150) {
+    const possibleLanes = [0, 1, 2].filter(lane =>
+      !obstacles.some(ob => ob.lane === lane && (canvas.height - ob.y - obstacleHeight) < minGap)
+    );
+
+
+    if (possibleLanes.length > 0) {
+      const lane = possibleLanes[Math.floor(Math.random() * possibleLanes.length)];
+      const img = obstacleImgs[Math.floor(Math.random() * obstacleImgs.length)];
+      obstacles.push({ lane, y: -obstacleHeight, img });
+    }
+  }
+
+
+  obstacles = obstacles.filter(ob => ob.y < canvas.height);
+}
+
+
+function checkCollision() {
+  const carY = canvas.height - carHeight - 150;
+  const buffer = 15; // เพิ่มระยะชนปลอดภัย
+
+
+  for (let ob of obstacles) {
+    if (
+      ob.lane === carLane &&
+      ob.y + obstacleHeight - buffer > carY &&
+      ob.y + buffer < carY + carHeight
+    ) {
+      endGame();
+    }
+  }
+}
+
+
+function gameLoop() {
+  if (!gameActive) return;
+  drawBackground();
+  drawLaneLines();
+  drawCar();
+  drawObstacles();
+  updateObstacles();
+  checkCollision();
+
+
+  score++;
+  if (score % 60 === 0) {
+    document.getElementById('timerDisplay').innerText = 'Time: ' + Math.floor(score / 60) + ' sec';
+  }
+
+
+  // เพิ่มความเร็วช้าลง
+  if (score % 500 === 0) speed *= 1.05;
+
+
+  requestAnimationFrame(gameLoop);
+}
+
+
+function startGame() {
+  laneWidth = canvas.width / 3;
+  obstacleWidth = laneWidth * 0.5;
+  gameSound.currentTime = 0;
+  gameSound.play();
+  document.getElementById('startScreen').style.display = 'none';
+  document.getElementById('gameOverScreen').style.display = 'none';
+  document.getElementById('timerDisplay').innerText = 'Time: 0 sec';
+  carLane = 1;
+  speed = 2;
+  score = 0;
+  obstacles = [];
+  bgY = 0;
+  gameActive = true;
+  gameLoop();
+}
+
+
+function endGame() {
+  gameSound.pause();
+  gameOverSound.play();
+  gameActive = false;
+  document.getElementById('finalScore').innerText = 'Game Over! Time: ' + Math.floor(score / 60) + ' sec';
+  document.getElementById('gameOverScreen').style.display = 'flex';
+}
+
+
+document.addEventListener('keydown', (e) => {
+  if (!gameActive) return;
+  if (e.key === 'ArrowLeft' && carLane > 0) carLane--;
+  else if (e.key === 'ArrowRight' && carLane < 2) carLane++;
+});
+
+
+canvas.addEventListener('touchstart', (e) => {
+  if (!gameActive) return;
+  const touchX = e.touches[0].clientX;
+  const third = canvas.width / 3;
+  if (touchX < third && carLane > 0) carLane--;
+  else if (touchX > 2 * third && carLane < 2) carLane++;
+});
+
+
+document.getElementById('startButton').addEventListener('click', startGame);
+document.getElementById('restartButton').addEventListener('click', startGame);
+</script>
+
+
+</body>
+</html>
